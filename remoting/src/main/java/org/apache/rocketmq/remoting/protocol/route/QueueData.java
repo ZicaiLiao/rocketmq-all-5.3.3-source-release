@@ -20,11 +20,23 @@
  */
 package org.apache.rocketmq.remoting.protocol.route;
 
+/**
+ * 队列元数据：所在broker名称、读队列个数、写队列个数、权限位、主题的系统标识
+ */
 public class QueueData implements Comparable<QueueData> {
+    /** broker 名称 */
     private String brokerName;
+
+    /** 读队列个数 */
     private int readQueueNums;
+
+    /** 写队列个数 */
     private int writeQueueNums;
+
+    /** 权限位 */
     private int perm;
+
+    /** 主题系统标志 */
     private int topicSysFlag;
 
     public QueueData() {

@@ -18,6 +18,12 @@
 package org.apache.rocketmq.srvutil;
 
 import com.google.common.base.Strings;
+import org.apache.rocketmq.common.LifecycleAwareServiceThread;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.logging.org.slf4j.Logger;
+import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,12 +32,10 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.rocketmq.common.LifecycleAwareServiceThread;
-import org.apache.rocketmq.common.UtilAll;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.org.slf4j.Logger;
-import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 
+/**
+ * 主要用于监控NameServer和Broker的信任证书文件，认证文件以及私钥文件的更改。
+ */
 public class FileWatchService extends LifecycleAwareServiceThread {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
@@ -42,7 +46,9 @@ public class FileWatchService extends LifecycleAwareServiceThread {
 
     public FileWatchService(final String[] watchFiles,
         final Listener listener) throws Exception {
+        // 设置监听器，对需要监听的文件进行监听
         this.listener = listener;
+        // 遍历需要监听的文件，并计算出文件的MD5值，存入到map中
         for (String file : watchFiles) {
             if (!Strings.isNullOrEmpty(file) && new File(file).exists()) {
                 currentHash.put(file, md5Digest(file));
@@ -61,9 +67,14 @@ public class FileWatchService extends LifecycleAwareServiceThread {
 
         while (!this.isStopped()) {
             try {
+                // 等待500ms
                 this.waitForRunning(WATCH_INTERVAL);
+                // 遍历需要监听的文件集合
                 for (Map.Entry<String, String> entry : currentHash.entrySet()) {
+                    // 根据文件对象计算MD5值
                     String newHash = md5Digest(entry.getKey());
+                    // 将计算出来的MD5值与保存的MD5值进行对比，如果不同，则将计算出来的MD5值更新到map中，
+                    // 同时触发该文件的监听器onChange方法进行文件更改处理
                     if (!newHash.equals(entry.getValue())) {
                         entry.setValue(newHash);
                         listener.onChanged(entry.getKey());

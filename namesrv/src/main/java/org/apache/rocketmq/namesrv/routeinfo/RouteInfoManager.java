@@ -18,20 +18,6 @@ package org.apache.rocketmq.namesrv.routeinfo;
 
 import com.google.common.collect.Sets;
 import io.netty.channel.Channel;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
@@ -65,15 +51,59 @@ import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.statictopic.TopicQueueMappingInfo;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 public class RouteInfoManager {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private static final long DEFAULT_BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2;
+
+    /**
+     * 存储集群元数据的集合，用读写锁进行保护，确保数据安全
+     */
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    /**
+     * 主题队列表，key为主题，value为map集合，key为brokerName，value是主题消息队列的元数据（主题所在broker名称，读队列个数、写队列个数、权限位、主题的系统标志）
+     */
     private final Map<String/* topic */, Map<String, QueueData>> topicQueueTable;
+
+    /**
+     * 主题地址表，key为主题，value位broker元数据，包括了broker所属的集群名称（主从复制模式），broker名称以及broker名称下的主从节点实例地址
+     */
     private final Map<String/* brokerName */, BrokerData> brokerAddrTable;
+
+    /**
+     * 集群地址表，key是集群名称，value是集群中broker名称集合
+     */
     private final Map<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
+
+    /**
+     * broker活跃信息表，key是broker地址信息（包括broker所属的集群名称，borker的地址字符串），
+     * value是Broker活跃信息（包括上次更新时间戳，心跳超时时间（毫秒），数据版本，netty通道实例，高可用服务节点地址）
+     */
     private final Map<BrokerAddrInfo/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
+
+    /**
+     * 过滤器服务表：key是broker地址信息（包括broker所属的集群名称，broker的地址字符串），value是过滤器名称列表
+     */
     private final Map<BrokerAddrInfo/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
+
+    /**
+     *  key是主题名称，value是主题队列映射信息（包含了broker名称（主从关系），主题名称，主题在该broker上的队列总数，用于隔离旧的脏数据的纪元数字等）
+     */
     private final Map<String/* topic */, Map<String/*brokerName*/, TopicQueueMappingInfo>> topicQueueMappingInfoTable;
 
     private final BatchUnregistrationService unRegisterService;
@@ -800,6 +830,9 @@ public class RouteInfoManager {
         return null;
     }
 
+    /**
+     * 扫描不活跃的broker
+     */
     public void scanNotActiveBroker() {
         try {
             log.info("start scanNotActiveBroker");
@@ -1177,11 +1210,34 @@ class BrokerAddrInfo {
     }
 }
 
+/**
+ * broker存活信息，包括上次更新时间戳，心跳超时时间（毫秒），数据版本，netty通道实例，高可用服务节点地址
+ */
 class BrokerLiveInfo {
+
+    /**
+     * 上次更新时间戳
+     */
     private long lastUpdateTimestamp;
+
+    /**
+     * 心跳超时时间，单位毫秒
+     */
     private long heartbeatTimeoutMillis;
+
+    /**
+     * 数据版本
+     */
     private DataVersion dataVersion;
+
+    /**
+     * netty通道实例
+     */
     private Channel channel;
+
+    /**
+     * 高可用服务节点地址
+     */
     private String haServerAddr;
 
     public BrokerLiveInfo(long lastUpdateTimestamp, long heartbeatTimeoutMillis, DataVersion dataVersion,

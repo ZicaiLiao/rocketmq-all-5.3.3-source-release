@@ -17,24 +17,38 @@
 
 package org.apache.rocketmq.remoting.protocol.route;
 
+import org.apache.commons.lang3.StringUtils;
+import org.apache.rocketmq.common.MixAll;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.rocketmq.common.MixAll;
 
 /**
  * The class describes that a typical broker cluster's (in replication) details: the cluster (in sharding) name
  * that it belongs to, and all the single instance information for this cluster.
+ * <p>
+ * 该类表示典型的broker集群的详细信息（主从复制）：所属的集群名称，broker名称，以及集群中borker名称下所有实例的集合。
+ * 同时也包括了zoneName信息。
  */
 public class BrokerData implements Comparable<BrokerData> {
+
+    /**
+     * 集群名称
+     */
     private String cluster;
+
+    /**
+     * broker名称
+     */
     private String brokerName;
 
     /**
      * The container that store the all single instances for the current broker replication cluster.
      * The key is the brokerId, and the value is the address of the single broker instance.
+     * <p>
+     * 集群中所有实例的集合，key为brokerId，value为broker的地址。注意brokerId=0为master，其他的为slave
      */
     private HashMap<Long, String> brokerAddrs;
     private String zoneName;

@@ -16,17 +16,18 @@
  */
 package org.apache.rocketmq.namesrv.kvconfig;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map.Entry;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.org.slf4j.Logger;
 import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.namesrv.NamesrvController;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map.Entry;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class KVConfigManager {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
@@ -41,17 +42,24 @@ public class KVConfigManager {
         this.namesrvController = namesrvController;
     }
 
+    /**
+     * 加载配置信息，解析配置文件为配置键值对，添加到configTable中
+     * configTable的key为命名空间名称，value为hashmap
+     */
     public void load() {
         String content = null;
         try {
+            // 将配置文件的配置信息解析为字符串
             content = MixAll.file2String(this.namesrvController.getNamesrvConfig().getKvConfigPath());
         } catch (IOException e) {
             log.warn("Load KV config table exception", e);
         }
         if (content != null) {
+            // 将配置json字符串反序列化为KVConfigSerializeWrapper对象
             KVConfigSerializeWrapper kvConfigSerializeWrapper =
                 KVConfigSerializeWrapper.fromJson(content, KVConfigSerializeWrapper.class);
             if (null != kvConfigSerializeWrapper) {
+                // 如果有配置信息，将配置信息添加到configTable中
                 this.configTable.putAll(kvConfigSerializeWrapper.getConfigTable());
                 log.info("load KV config table OK");
             }

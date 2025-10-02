@@ -94,16 +94,42 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     private static final Logger TRAFFIC_LOGGER = LoggerFactory.getLogger(LoggerName.ROCKETMQ_TRAFFIC_NAME);
 
     private final ServerBootstrap serverBootstrap;
+
+    /**
+     * netty的事件循环组（worker）
+     */
     protected final EventLoopGroup eventLoopGroupSelector;
+
+    /**
+     * netty的事件循环组（boss）
+     */
     protected final EventLoopGroup eventLoopGroupBoss;
+
+    /**
+     * netty服务端配置
+     */
     protected final NettyServerConfig nettyServerConfig;
 
+    /**
+     * 通用线程池
+     */
     private final ExecutorService publicExecutor;
+
+    /**
+     * 调度线程池
+     */
     private final ScheduledExecutorService scheduledExecutorService;
+
+    /**
+     * 通道事件监听器
+     */
     private final ChannelEventListener channelEventListener;
 
     private final HashedWheelTimer timer = new HashedWheelTimer(r -> new Thread(r, "ServerHouseKeepingService"));
 
+    /**
+     * 默认事件执行器线程池
+     */
     private DefaultEventExecutorGroup defaultEventExecutorGroup;
 
     /**
@@ -337,17 +363,35 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * 注册处理器，将请求码、请求处理器以及处理请求的线程池添加到hashmap中
+     * 其中key为请求码，value为请求处理器和处理请求到线程池组成的Pair对象
+     *
+     * @param requestCode 请求码，不同的请求使用不同的处理器处理，通过请求码来区分不同的请求
+     * @param processor   请求处理器对象
+     * @param executor    执行处理请求的线程池对象
+     */
     @Override
     public void registerProcessor(int requestCode, NettyRequestProcessor processor, ExecutorService executor) {
+        // 设置线程池
         ExecutorService executorThis = executor;
+        // 如果没有指定线程池，则使用publicExecutor
         if (null == executor) {
             executorThis = this.publicExecutor;
         }
 
+        // 使用Pari封装处理器和执行请求处理的线程池对象
         Pair<NettyRequestProcessor, ExecutorService> pair = new Pair<>(processor, executorThis);
+        // 将请求码作为key，处理器和处理请求的线程组成的Pari为value，添加到hashmap中
         this.processorTable.put(requestCode, pair);
     }
 
+    /**
+     * 注册默认的处理器
+     *
+     * @param processor 处理器
+     * @param executor  线程池
+     */
     @Override
     public void registerDefaultProcessor(NettyRequestProcessor processor, ExecutorService executor) {
         this.defaultRequestProcessorPair = new Pair<>(processor, executor);

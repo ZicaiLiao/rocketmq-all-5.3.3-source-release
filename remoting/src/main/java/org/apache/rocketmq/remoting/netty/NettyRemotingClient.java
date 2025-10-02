@@ -45,6 +45,28 @@ import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import io.netty.util.concurrent.EventExecutorGroup;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.rocketmq.common.Pair;
+import org.apache.rocketmq.common.ThreadFactoryImpl;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.utils.FutureUtils;
+import org.apache.rocketmq.common.utils.NetworkUtil;
+import org.apache.rocketmq.common.utils.ThreadUtils;
+import org.apache.rocketmq.logging.org.slf4j.Logger;
+import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
+import org.apache.rocketmq.remoting.ChannelEventListener;
+import org.apache.rocketmq.remoting.InvokeCallback;
+import org.apache.rocketmq.remoting.RemotingClient;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
+import org.apache.rocketmq.remoting.exception.RemotingConnectException;
+import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
+import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.apache.rocketmq.remoting.protocol.RequestCode;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.proxy.SocksProxyConfig;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -69,27 +91,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.rocketmq.common.Pair;
-import org.apache.rocketmq.common.ThreadFactoryImpl;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.common.utils.FutureUtils;
-import org.apache.rocketmq.common.utils.NetworkUtil;
-import org.apache.rocketmq.common.utils.ThreadUtils;
-import org.apache.rocketmq.logging.org.slf4j.Logger;
-import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
-import org.apache.rocketmq.remoting.ChannelEventListener;
-import org.apache.rocketmq.remoting.InvokeCallback;
-import org.apache.rocketmq.remoting.RemotingClient;
-import org.apache.rocketmq.remoting.common.RemotingHelper;
-import org.apache.rocketmq.remoting.exception.RemotingConnectException;
-import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
-import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
-import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
-import org.apache.rocketmq.remoting.protocol.RemotingCommand;
-import org.apache.rocketmq.remoting.protocol.RequestCode;
-import org.apache.rocketmq.remoting.protocol.ResponseCode;
-import org.apache.rocketmq.remoting.proxy.SocksProxyConfig;
 
 import static org.apache.rocketmq.remoting.common.RemotingHelper.convertChannelFutureToCompletableFuture;
 
@@ -271,8 +272,8 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
             };
             this.timer.newTimeout(timerTaskScanAvailableNameSrv, 0, TimeUnit.MILLISECONDS);
         }
-        
-        
+
+
     }
 
     private Map.Entry<String, SocksProxyConfig> getProxy(String addr) {
@@ -507,6 +508,13 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * 首先对比已有的缓存的命名服务器地址列表与新的命名服务器地址列表；
+     * 如果不同，则需要更新本地的命名服务器地址列表，新的列表直接替换原子引用中原来的命名服务器地址列表即可。
+     * 同时，对于选择的命名服务器地址，看看有没有使用中的不在新地址列表中的，如果已经建立了到该命名服务器的连接通道，则关闭通信通道。
+     *
+     * @param addrs 新的命名服务器地址列表
+     */
     @Override
     public void updateNameServerAddressList(List<String> addrs) {
         List<String> old = this.namesrvAddrList.get();
@@ -527,18 +535,26 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
             }
 
             if (update) {
+                // 打乱新的命名服务地址列表
                 Collections.shuffle(addrs);
                 LOGGER.info("name server address updated. NEW : {} , OLD: {}", addrs, old);
+                // 对原子引用设置为新的命名服务地址列表
                 this.namesrvAddrList.set(addrs);
 
                 // should close the channel if choosed addr is not exist.
+                // 获取原来选中的命名服务器地址
                 String chosenNameServerAddr = this.namesrvAddrChoosed.get();
+                // 如果原来选中的服务器地址不为空，并且选中的命名服务器地址不在新的命名服务器地址列表中，则关闭原来选中的channel
                 if (chosenNameServerAddr != null && !addrs.contains(chosenNameServerAddr)) {
                     namesrvAddrChoosed.compareAndSet(chosenNameServerAddr, null);
+                    // 遍历通信通道表的key（key记录的是命名服务器地址），关闭不在新的命名服务器地址列表中存在的到命名服务器的通信通道连接。
                     for (String addr : this.channelTables.keySet()) {
+                        // 如果选中的命名服务器地址已经与命名服务器建立了连接
                         if (addr.contains(chosenNameServerAddr)) {
+                            // 获取通信通道封装对象
                             ChannelWrapper channelWrapper = this.channelTables.get(addr);
                             if (channelWrapper != null) {
+                                // 关闭该通信通道
                                 channelWrapper.close();
                             }
                         }
